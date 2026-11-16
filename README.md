@@ -46,6 +46,12 @@ python -m app.scheduler.scheduler
 
 `CHECK_INTERVAL_MINUTES` controls the interval (minimum 5); `TIMEZONE` defaults to `Asia/Kolkata`. The scheduler checks configured enabled sources and writes run history. Manual maintenance is available from the admin overview. Starting this process is required for recurring checks; Flask does not start background schedulers.
 
+## Vercel deployment
+
+Vercel uses `run:app` as the Flask entrypoint, declared in `pyproject.toml`. Add `DATABASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `SECRET_KEY`, `CHECK_INTERVAL_MINUTES`, and `TIMEZONE` as encrypted Vercel environment variables before deploying. Do not upload `.env`.
+
+Vercel serverless functions do not run UniSync's persistent APScheduler process. Use Vercel Cron or another external scheduler to call a protected maintenance trigger if recurring production scans are required. Manual scans remain available through the administrator dashboard. Your MySQL database must be hosted on a publicly reachable managed service; a local `127.0.0.1` MySQL server cannot be reached by Vercel.
+
 ## Sources and extraction
 
 Add the actual source URL through the admin UI; UniSync has no invented/preloaded URLs. URLs must resolve to public IP addresses. Robots rules are checked when available; requests have timeouts; redirects to private addresses are blocked. Pages that require login, CAPTCHA bypass, paywalls, or client-side rendering are unsupported and recorded as failed. Optional CSS selectors can target a relevant page section. The fetcher collects the configured page and follows at most three keyword-relevant same-domain links per scan, with robots and URL checks on each page. It does not crawl unrelated domains. The extraction agent works from the actual configured page text and evidence quotes must occur in that text. Missing facts remain null.
