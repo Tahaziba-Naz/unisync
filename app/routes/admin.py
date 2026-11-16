@@ -72,7 +72,15 @@ def scan_source(source_id):
 @bp.post("/maintenance/run")
 @login_required
 def manual_run():
-    result=run_cycle(); flash(f"Maintenance finished: {result['status']}; {result['proposals_created']} proposals created.","success" if result["status"]=="success" else "error"); return redirect(url_for("admin.dashboard"))
+    result=run_cycle()
+    if result.get("status")=="skipped":
+        flash(result.get("error", "Maintenance is already running."), "error")
+    else:
+        flash(f"Maintenance finished: {result.get('status', 'unknown')}; {result.get('proposals_created', 0)} proposals created.","success" if result.get("status")=="success" else "error")
+        if result.get("errors"):
+            first=result["errors"][0]
+            flash(f"{first.get('source', 'Source')} failed: {first.get('error', 'Unknown scan error')}", "error")
+    return redirect(url_for("admin.dashboard"))
 @bp.get("/proposals")
 @login_required
 def proposals(): return render_template("review_queue.html", proposals=Proposal.query.order_by(Proposal.created_at.desc()).all())

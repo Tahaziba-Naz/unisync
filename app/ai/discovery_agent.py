@@ -4,12 +4,15 @@ from .prompts import DISCOVERY
 from .schemas import DiscoveryOutput
 
 def discover(raw_page):
-    remaining=30000; pages=[]
+    # Keep requests small enough for free-tier OpenAI-compatible services.
+    # `raw_page.text` is an aggregate of these pages, so sending it as well
+    # would duplicate the input and can cause a provider HTTP 413 response.
+    remaining=12000; pages=[]
     for page in (raw_page.pages or [{"url":raw_page.url,"text":raw_page.text}]):
         if remaining<=0: break
-        text=page["text"][:remaining]; remaining-=len(text)
+        text=page["text"][:min(3000, remaining)]; remaining-=len(text)
         pages.append({"url":page["url"],"text":text})
-    content = json.dumps({"url": raw_page.url, "pages": pages, "text": raw_page.text[:30000], "links": raw_page.links[:30]}, ensure_ascii=False)
+    content = json.dumps({"url": raw_page.url, "pages": pages, "links": raw_page.links[:20]}, ensure_ascii=False)
     errors = []
     for _ in range(2):
         try:

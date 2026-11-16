@@ -34,6 +34,17 @@ def test_malformed_llm_response_fails(monkeypatch):
     except RuntimeError as e: assert "failed validation" in str(e)
     else: assert False, "malformed response must fail"
 
+def test_discovery_payload_is_bounded_and_not_duplicated(monkeypatch):
+    from app.ai.discovery_agent import discover
+    seen=[]
+    response={"records":[{"title":"Campus Notice","category":"notice","source_url":"https://example.org/one","apply_url":None,"deadline":None,"eligibility":None,"description":"Announcement","published_date":None,"evidence":[{"field":"title","quote":"Campus Notice"}]}]}
+    monkeypatch.setattr("app.ai.discovery_agent.complete", lambda _system, payload: seen.append(payload) or json.dumps(response))
+    pages=[{"url":"https://example.org/one","text":"Campus Notice " + "A"*5000}, {"url":"https://example.org/two","text":"B"*5000}, {"url":"https://example.org/three","text":"C"*5000}]
+    discover(RawPage("https://example.org/one", "\n".join(page["text"] for page in pages), [], pages))
+    payload=json.loads(seen[0])
+    assert "text" not in payload
+    assert sum(len(page["text"]) for page in payload["pages"]) <= 12000
+
 def test_review_agent_rejects_invalid_json(monkeypatch):
     from app.ai.review_agent import review
     monkeypatch.setattr("app.ai.review_agent.complete",lambda *a:"{broken")
@@ -121,3 +132,24 @@ def test_scheduler_prevents_overlapping_local_cycle():
     assert maintenance_engine._lock.acquire(blocking=False)
     try: assert maintenance_engine.run_cycle()["status"]=="skipped"
     finally: maintenance_engine._lock.release()
+
+def test_manual_run_handles_an_active_cycle(app, client, monkeypatch):
+    from app.extensions import db
+    from app.models import Admin
+    admin=Admin(username="admin-user"); admin.set_password("a sufficiently long test password")
+    with app.app_context(): db.session.add(admin); db.session.commit()
+    assert client.post("/admin/login", data={"username":"admin-user","password":"a sufficiently long test password"}).status_code==302
+    monkeypatch.setattr("app.routes.admin.run_cycle", lambda: {"status":"skipped", "error":"A maintenance cycle is already running."})
+    response=client.post("/admin/maintenance/run", follow_redirects=True)
+    assert response.status_code==200
+    assert b"A maintenance cycle is already running." in response.data
+
+def test_manual_run_shows_source_error(app, client, monkeypatch):
+    from app.extensions import db
+    from app.models import Admin
+    admin=Admin(username="scan-admin"); admin.set_password("a sufficiently long test password")
+    with app.app_context(): db.session.add(admin); db.session.commit()
+    client.post("/admin/login", data={"username":"scan-admin","password":"a sufficiently long test password"})
+    monkeypatch.setattr("app.routes.admin.run_cycle", lambda: {"status":"partial_failure", "proposals_created":0, "errors":[{"source":"College notices", "error":"LLM returned HTTP 400."}]})
+    response=client.post("/admin/maintenance/run", follow_redirects=True)
+    assert b"College notices failed: LLM returned HTTP 400." in response.data

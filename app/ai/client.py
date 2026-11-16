@@ -13,6 +13,7 @@ def complete(system_prompt, payload):
     except requests.Timeout as exc: raise LLMError("LLM request timed out.") from exc
     except requests.RequestException as exc: raise LLMError(f"LLM request failed: {exc.__class__.__name__}.") from exc
     if response.status_code in (401, 403): raise LLMError("LLM authentication failed; verify the configured API key.")
+    if response.status_code == 413: raise LLMError("LLM rejected the webpage content as too large (HTTP 413).")
     if response.status_code == 429: raise LLMError("LLM rate limit reached; retry later.")
     if not response.ok: raise LLMError(f"LLM service returned HTTP {response.status_code}.")
     try: return response.json()["choices"][0]["message"]["content"]
